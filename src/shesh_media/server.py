@@ -7,10 +7,7 @@ import shutil
 import subprocess
 import time
 
-try:
-    from shesh_audit.mcp_guard import GuardedMCP as FastMCP
-except ImportError:
-    from fastmcp import FastMCP
+from shesh_audit.mcp_guard import GuardedMCP as FastMCP
 
 mcp = FastMCP("shesh-media")
 
