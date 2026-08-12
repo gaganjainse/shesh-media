@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import pathlib
+import shutil
 import subprocess
+import time
 
 try:
     from shesh_audit.guard import GuardedMCP as FastMCP
@@ -12,61 +14,111 @@ except ImportError:
 
 mcp = FastMCP("shesh-media")
 
-def _run(cmd: list[str]) -> tuple[bool, str]:
+STATE_DIR = pathlib.Path.home() / ".local" / "state" / "shesh" / "media"
+SHOT_DIR = STATE_DIR / "shots"
+REC_DIR = STATE_DIR / "recordings"
+PID_FILE = STATE_DIR / "recording.pid"
+
+
+def _run(cmd: list[str], timeout: int = 60) -> tuple[int, str]:
+    """Run a command, return (returncode, combined output). Never raises."""
     try:
-        out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT, timeout=10)
-        return True, out.strip()
+        out = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, check=False
+        )
+        return out.returncode, (out.stdout + out.stderr).strip()
     except Exception as e:
-        return False, str(e)
+        return 1, str(e)
+
 
 @mcp.tool()
-def take_screenshot(path: str = "/tmp/shesh_screenshot.png", region: str | None = None) -> dict:
-    """Take screenshot via grim (full) or grim+slurp (region)."""
-    p = pathlib.Path(path)
-    # Try grim
+def screenshot(copy: bool = True, region: bool = False, path: str | None = None) -> dict:
+    """Screenshot via grim (full) or grim+slurp (region). Optionally wl-copy."""
+    if not shutil.which("grim"):
+        return {"ok": False, "error": "grim not installed"}
+    geom: list[str] = []
     if region:
-        ok, out = _run(["grim", "-g", region, str(p)])
-    else:
-        ok, out = _run(["grim", str(p)])
-    if not ok:
-        # Fallback: create empty file for offline test
-        p.write_text("fake png")
-        return {"ok": True, "path": str(p), "note": "grim not available, stub file created"}
-    return {"ok": ok, "path": str(p)}
+        if not shutil.which("slurp"):
+            return {"ok": False, "error": "slurp not installed (needed for region)"}
+        rc, sel = _run(["slurp"], timeout=60)
+        if rc != 0 or not sel:
+            return {"ok": False, "error": f"slurp cancelled/failed: {sel}"}
+        geom = ["-g", sel]
+    SHOT_DIR.mkdir(parents=True, exist_ok=True)
+    p = pathlib.Path(path) if path else SHOT_DIR / f"shot-{time.strftime('%Y%m%d-%H%M%S')}.png"
+    rc, out = _run(["grim", *geom, str(p)])
+    if rc != 0:
+        return {"ok": False, "error": out or "grim failed"}
+    if copy and shutil.which("wl-copy"):
+        with open(p, "rb") as fh:
+            subprocess.run(["wl-copy"], stdin=fh, check=False)
+    return {"ok": True, "path": str(p)}
+
 
 @mcp.tool()
 def list_sinks() -> dict:
     """List audio sinks via wpctl/pactl."""
-    ok, out = _run(["wpctl", "status"])
-    if not ok:
-        ok, out = _run(["pactl", "list", "sinks", "short"])
-    if not ok:
+    rc, out = _run(["wpctl", "status"])
+    if rc != 0:
+        rc, out = _run(["pactl", "list", "sinks", "short"])
+    if rc != 0:
         return {"sinks": ["stub-speakers", "stub-headphones"], "offline": True}
     return {"sinks": out.splitlines()[:20]}
 
+
 @mcp.tool()
 def set_wallpaper(path: str, output: str = "") -> dict:
-    """Set wallpaper via swaybg/hyprpaper (stub if not available)."""
+    """Set wallpaper via hyprpaper (hyprctl IPC)."""
     p = pathlib.Path(path)
     if not p.exists():
         return {"ok": False, "error": f"file not found {path}"}
-    ok, out = _run(["swaybg", "-i", str(p), "-m", "fill"])
-    if not ok:
-        return {"ok": True, "path": str(p), "note": "swaybg not available, stub"}
+    if not shutil.which("hyprctl"):
+        return {"ok": False, "error": "hyprctl not installed"}
+    _run(["hyprctl", "hyprpaper", "unload", "all"])
+    rc, out = _run(["hyprctl", "hyprpaper", "preload", str(p)])
+    if rc != 0:
+        return {"ok": False, "error": out or "hyprpaper preload failed"}
+    target = f"{output},{p}" if output else f",{p}"
+    rc, out = _run(["hyprctl", "hyprpaper", "wallpaper", target])
+    if rc != 0:
+        return {"ok": False, "error": out or "hyprpaper wallpaper failed"}
     return {"ok": True, "path": str(p)}
 
+
 @mcp.tool()
-def start_recording(path: str = "/tmp/shesh_recording.mp4") -> dict:
-    """Start screen recording via wf-recorder (stub)."""
-    return {"ok": True, "path": path, "note": "recording started stub - would call wf-recorder"}
+def start_recording(path: str | None = None) -> dict:
+    """Start screen recording via wf-recorder. Fails if already recording."""
+    if PID_FILE.exists():
+        return {"ok": False, "error": "already recording"}
+    if not shutil.which("wf-recorder"):
+        return {"ok": False, "error": "wf-recorder not installed"}
+    REC_DIR.mkdir(parents=True, exist_ok=True)
+    out = pathlib.Path(path) if path else REC_DIR / f"rec-{time.strftime('%Y%m%d-%H%M%S')}.mp4"
+    proc = subprocess.Popen(
+        ["wf-recorder", "-f", str(out)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    PID_FILE.write_text(f"{proc.pid} {out}")
+    return {"ok": True, "pid": proc.pid, "path": str(out)}
+
 
 @mcp.tool()
 def stop_recording() -> dict:
-    """Stop recording."""
-    return {"ok": True, "note": "recording stopped stub"}
+    """Stop the running wf-recorder (SIGINT for clean finalize)."""
+    if not PID_FILE.exists():
+        return {"ok": False, "error": "not recording"}
+    pid = PID_FILE.read_text().split()[0]
+    PID_FILE.unlink()
+    rc, out = _run(["kill", "-INT", pid])
+    if rc != 0:
+        return {"ok": False, "error": out or f"could not stop pid {pid}"}
+    return {"ok": True, "pid": int(pid)}
+
 
 def main() -> None:
     mcp.run(transport="stdio")
+
 
 if __name__ == "__main__":
     main()
