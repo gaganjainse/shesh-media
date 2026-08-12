@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import shesh_media.server as srv  # noqa: E402
+import shesh_media.server as srv
 
 
 def test_screenshot_missing_grim(monkeypatch):

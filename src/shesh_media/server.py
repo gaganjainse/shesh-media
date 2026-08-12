@@ -27,7 +27,7 @@ def _run(cmd: list[str], timeout: int = 60) -> tuple[int, str]:
             cmd, capture_output=True, text=True, timeout=timeout, check=False
         )
         return out.returncode, (out.stdout + out.stderr).strip()
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return 1, str(e)
 
 
