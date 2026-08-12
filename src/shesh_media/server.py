@@ -73,13 +73,59 @@ def take_screenshot(path: str = "/tmp/shesh_screenshot.png", region: str | None 
 
 @mcp.tool()
 def list_sinks() -> dict:
-    """List audio sinks via wpctl/pactl."""
+    """List audio sinks via wpctl/pactl.
+
+    Honesty contract: never fabricates sink names. When neither CLI is
+    usable the sink list is empty and `ok` is False with the reason;
+    `offline` marks that no audio stack answered.
+    """
+    if not (shutil.which("wpctl") or shutil.which("pactl")):
+        return {"ok": False, "sinks": [], "offline": True,
+                "reason": "neither wpctl nor pactl installed"}
     rc, out = _run(["wpctl", "status"])
     if rc != 0:
         rc, out = _run(["pactl", "list", "sinks", "short"])
     if rc != 0:
-        return {"sinks": ["stub-speakers", "stub-headphones"], "offline": True}
-    return {"sinks": out.splitlines()[:20]}
+        return {"ok": False, "sinks": [], "offline": True,
+                "reason": out or "audio query failed"}
+    return {"ok": True, "sinks": out.splitlines()[:20], "offline": False}
+
+
+@mcp.tool()
+def get_volume() -> dict:
+    """Read default-sink volume via wpctl. Parses 'Volume: 0.45 [MUTED]'."""
+    if not shutil.which("wpctl"):
+        return {"ok": False, "error": "wpctl not installed"}
+    rc, out = _run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"])
+    if rc != 0:
+        return {"ok": False, "error": out or "wpctl get-volume failed"}
+    vol = None
+    for token in out.split():
+        try:
+            vol = float(token)
+            break
+        except ValueError:
+            continue  # non-numeric token (e.g. 'Volume:') — skip
+    if vol is None:
+        return {"ok": False, "error": f"unparseable wpctl output: {out!r}"}
+    return {"ok": True, "volume": vol, "muted": "[MUTED]" in out}
+
+
+@mcp.tool()
+def set_volume(volume: float) -> dict:
+    """Set default-sink volume (0.0–1.0, hard-capped) via wpctl."""
+    if not shutil.which("wpctl"):
+        return {"ok": False, "error": "wpctl not installed"}
+    try:
+        vol = float(volume)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": f"not a number: {volume!r}"}
+    if not 0.0 <= vol <= 1.0:
+        return {"ok": False, "error": "volume must be within 0.0–1.0 (capped by policy)"}
+    rc, out = _run(["wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", f"{vol:.2f}"])
+    if rc != 0:
+        return {"ok": False, "error": out or "wpctl set-volume failed"}
+    return {"ok": True, "volume": vol}
 
 
 @mcp.tool()
