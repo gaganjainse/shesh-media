@@ -56,6 +56,25 @@ def screenshot(copy: bool = True, region: bool = False, path: str | None = None)
 
 
 @mcp.tool()
+def take_screenshot(path: str = "/tmp/shesh_screenshot.png", region: str | None = None) -> dict:
+    """Compat alias of screenshot(): explicit path, region as slurp geometry string.
+
+    Strict semantics (same as the new API): hard failure when grim is absent —
+    no fabricated success stubs.
+    """
+    if not shutil.which("grim"):
+        return {"ok": False, "error": "grim not installed"}
+    cmd = ["grim"]
+    if region:
+        cmd += ["-g", region]
+    cmd.append(path)
+    rc, out = _run(cmd)
+    if rc != 0:
+        return {"ok": False, "error": out or "grim failed"}
+    return {"ok": True, "path": path}
+
+
+@mcp.tool()
 def list_sinks() -> dict:
     """List audio sinks via wpctl/pactl."""
     rc, out = _run(["wpctl", "status"])
