@@ -1,6 +1,6 @@
-> ⚠️ **Consolidated into [shesh-core](https://github.com/gaganjainse/shesh-core)** — this module now lives in the shesh-core monorepo (same package name, same console script). Archived 2026-08-13.
+>  **Consolidated into [shesh-core](https://github.com/gaganjainse/shesh-core)** — this module now lives in the shesh-core monorepo (same package name, same console script). Archived 2026-08-13.
 
-# 🎞️ shesh-media
+# shesh-media
 
 Soma media tools — screenshots, screen recording, wallpaper, audio routing.
 
@@ -9,6 +9,7 @@ Soma media tools — screenshots, screen recording, wallpaper, audio routing.
 - Provides: screenshots, recording, wallpaper, audio-routing
 
 ## Tools
+
 - `take_screenshot` — grim+slurp pipeline, returns path
 - `start_recording` / `stop_recording` — wf-recorder / obs
 - `set_wallpaper` — swaybg / hyprpaper
@@ -17,6 +18,7 @@ Soma media tools — screenshots, screen recording, wallpaper, audio routing.
 All behind Guard — protected paths denied.
 
 ## Dev
+
 ```bash
 uv sync && uv run pytest
 ```
