@@ -1,29 +1,35 @@
->  **Consolidated into [shesh-core](https://github.com/gaganjainse/shesh-core)** — this module now lives in the shesh-core monorepo (same package name, same console script). Archived 2026-08-13.
-
 # shesh-media
 
-Soma media tools — screenshots, screen recording, wallpaper, audio routing.
+> **Superseded by [shesh-core](https://github.com/gaganjainse/shesh-core).**
+> This repository is a tombstone: its history is preserved, its source is not.
 
-- Part of [Shesh ecosystem](https://github.com/gaganjainse/shesh-ecosystem)
-- Layer: Soma (body)
-- Provides: screenshots, recording, wallpaper, audio-routing
+## What happened
 
-## Tools
+[ADR-0019](https://github.com/gaganjainse/shesh-docs/blob/main/src/governance/adr/0019-shesh-core-monorepo.md)
+consolidated the single-module services into one repository. A module of a few
+hundred lines is not a service: each one carried its own build configuration,
+pipeline, and security policy, and those drifted apart from each other.
 
-- `take_screenshot` — grim+slurp pipeline, returns path
-- `start_recording` / `stop_recording` — wf-recorder / obs
-- `set_wallpaper` — swaybg / hyprpaper
-- `set_audio_sink` / `list_sinks` — wpctl / pactl
+The code now lives in `shesh-core` as the `shesh_media` package, with
+the same import path and the same console script.
 
-All behind Guard — protected paths denied.
+## Why the source was removed
 
-## Dev
+Two copies of the same module drift. Keeping the code here meant a reader could
+find it, edit it, and have the change silently ignored by everything that
+actually runs.
+
+The history remains in this repository's git log. Nothing was lost.
+
+## Installing
 
 ```bash
-uv sync && uv run pytest
+pipx install git+https://github.com/gaganjainse/shesh-core.git
 ```
 
-## Security
+Console script names are unchanged, so existing client configuration keeps
+working.
 
-Security posture and vulnerability reporting: [canonical ecosystem security
-policy](https://github.com/gaganjainse/shesh-ecosystem/blob/main/SECURITY.md).
+## Licence
+
+GPL-3.0-or-later.
